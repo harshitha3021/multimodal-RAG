@@ -5,7 +5,6 @@ import requests
 from pypdf import PdfReader
 from PIL import Image
 import easyocr
-from groq import Groq
 
 # ----------------------------------------
 # PAGE CONFIG
@@ -46,31 +45,34 @@ def extract_text_from_image(file):
     return " ".join(result)
 
 # ----------------------------------------
-# JINA EMBEDDINGS
+# JINA EMBEDDINGS (HTTP)
 # ----------------------------------------
 
 def get_jina_embeddings(texts, api_key):
     url = "https://api.jina.ai/v1/embeddings"
+
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}"
     }
-    data = {
+
+    payload = {
         "model": "jina-embeddings-v2-base-en",
         "input": texts
     }
 
-    response = requests.post(url, headers=headers, json=data)
+    response = requests.post(url, headers=headers, json=payload)
 
     if response.status_code != 200:
         st.error("Jina API error")
+        st.write(response.text)
         return None
 
     embeddings = [item["embedding"] for item in response.json()["data"]]
     return np.array(embeddings).astype("float32")
 
 # ----------------------------------------
-# VECTOR STORE (FAISS)
+# FAISS VECTOR INDEX
 # ----------------------------------------
 
 def create_faiss_index(embeddings):
@@ -80,30 +82,45 @@ def create_faiss_index(embeddings):
     return index
 
 # ----------------------------------------
-# GROQ LLM
+# GROQ LLM (HTTP VERSION - FIXED)
 # ----------------------------------------
 
 def generate_answer_groq(context, question, api_key):
-    client = Groq(api_key=api_key)
+    url = "https://api.groq.com/openai/v1/chat/completions"
 
-    prompt = f"""
-    Answer the question based on the context below.
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
 
-    Context:
-    {context}
+    payload = {
+        "model": "llama3-8b-8192",
+        "messages": [
+            {
+                "role": "user",
+                "content": f"""
+Answer the question using the context below.
 
-    Question:
-    {question}
+Context:
+{context}
 
-    Answer clearly:
-    """
+Question:
+{question}
 
-    completion = client.chat.completions.create(
-        model="llama3-8b-8192",
-        messages=[{"role": "user", "content": prompt}],
-    )
+Answer clearly:
+"""
+            }
+        ]
+    }
 
-    return completion.choices[0].message.content
+    response = requests.post(url, headers=headers, json=payload)
+
+    if response.status_code != 200:
+        st.error("Groq API error")
+        st.write(response.text)
+        return "Error generating answer."
+
+    return response.json()["choices"][0]["message"]["content"]
 
 # ----------------------------------------
 # FILE UPLOAD
@@ -152,7 +169,7 @@ if st.button("Generate Answer"):
     else:
         with st.spinner("Creating embeddings..."):
 
-            # Split context into chunks
+            # Split into chunks
             chunks = context_text.split("\n")
             chunks = [c for c in chunks if c.strip() != ""]
 
@@ -168,7 +185,6 @@ if st.button("Generate Answer"):
                 D, I = index.search(question_embedding, k=3)
 
                 retrieved_chunks = [chunks[i] for i in I[0]]
-
                 final_context = "\n".join(retrieved_chunks)
 
                 with st.spinner("Generating answer with Groq..."):
@@ -178,4 +194,4 @@ if st.button("Generate Answer"):
                 st.write(answer)
 
 st.markdown("---")
-st.caption("Full AI Multimodal RAG | Groq + Jina + FAISS")
+st.caption("Full AI Multimodal RAG | Groq (HTTP) + Jina + FAISS")
