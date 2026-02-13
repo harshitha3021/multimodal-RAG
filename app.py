@@ -1,88 +1,100 @@
 import streamlit as st
-from groq import Groq
+from groq import Client
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from PIL import Image
 import io
 
+# -----------------------------
+# Streamlit app title
+# -----------------------------
 st.set_page_config(page_title="Multimodal RAG App", layout="wide")
-st.title("📚 Multimodal RAG with Groq")
+st.title("📄🖼 Multimodal RAG App")
 
-# Ask for Groq API key
-groq_api_key = st.text_input("Enter your Groq API Key", type="password")
+# -----------------------------
+# API Key Inputs
+# -----------------------------
+groq_api_key = st.text_input("Enter Groq API Key", type="password")
 
-# Initialize Groq client if key is entered
-client = None
+# Initialize Groq client safely
+groq_client = None
 if groq_api_key:
     try:
-        client = Groq(api_key=groq_api_key)
+        groq_client = Client(api_key=groq_api_key)
+        st.success("Groq client initialized ✅")
     except Exception as e:
         st.error(f"Error initializing Groq client: {e}")
 
+# -----------------------------
 # File uploads
+# -----------------------------
 st.header("Upload your files")
-uploaded_text_files = st.file_uploader("Upload text files", type=["txt"], accept_multiple_files=True)
-uploaded_images = st.file_uploader("Upload images", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
 
-# Function to read text from uploaded files
-def read_text_files(files):
-    texts = []
-    for file in files:
-        try:
-            content = file.read().decode("utf-8")
-            texts.append(content)
-        except Exception as e:
-            st.warning(f"Could not read {file.name}: {e}")
-    return texts
+uploaded_text_file = st.file_uploader("Upload a text file", type=["txt"])
+uploaded_image_file = st.file_uploader("Upload an image file", type=["png", "jpg", "jpeg"])
 
-# Extract text content
-text_data = read_text_files(uploaded_text_files)
+# -----------------------------
+# Read text file
+# -----------------------------
+text_content = ""
+if uploaded_text_file:
+    text_content = uploaded_text_file.read().decode("utf-8")
+    st.subheader("Text content preview:")
+    st.write(text_content[:500] + "..." if len(text_content) > 500 else text_content)
 
-# Show uploaded images
-if uploaded_images:
-    st.subheader("Uploaded Images")
-    for img_file in uploaded_images:
-        img = Image.open(img_file)
-        st.image(img, caption=img_file.name)
+# -----------------------------
+# Display image
+# -----------------------------
+if uploaded_image_file:
+    image = Image.open(uploaded_image_file)
+    st.subheader("Uploaded Image:")
+    st.image(image, use_column_width=True)
 
-# Generate embeddings locally using TF-IDF (simple for demo)
-vectorizer = None
-text_embeddings = None
-if text_data:
-    vectorizer = TfidfVectorizer()
-    text_embeddings = vectorizer.fit_transform(text_data)
+# -----------------------------
+# Question input
+# -----------------------------
+question = st.text_input("Enter your question about the content:")
 
-# Function to get most relevant text chunks
-def get_relevant_context(query, embeddings, texts, top_k=3):
-    query_vec = vectorizer.transform([query])
-    sims = cosine_similarity(query_vec, embeddings)[0]
-    top_indices = sims.argsort()[-top_k:][::-1]
-    return [texts[i] for i in top_indices]
+# -----------------------------
+# TF-IDF based retrieval (simple RAG simulation)
+# -----------------------------
+def retrieve_context(text, question, top_k=3):
+    if not text.strip():
+        return ""
+    vectorizer = TfidfVectorizer(stop_words="english")
+    tfidf_matrix = vectorizer.fit_transform([text])
+    question_vec = vectorizer.transform([question])
+    sim = cosine_similarity(tfidf_matrix, question_vec).flatten()
+    # Simple: return full text (or could split into paragraphs)
+    return text
 
-# Ask user question
-st.header("Ask a Question")
-question = st.text_input("Enter your question:")
-
+# -----------------------------
 # Generate answer using Groq
-if st.button("Generate Answer") and question and text_embeddings is not None and client:
+# -----------------------------
+def generate_answer_groq(context, question):
+    if not groq_client:
+        return "Groq client not initialized."
+    if not context.strip():
+        return "No context available to answer the question."
+    prompt = f"Context: {context}\nQuestion: {question}\nAnswer:"
     try:
-        # Get relevant text context
-        context = get_relevant_context(question, text_embeddings, text_data, top_k=3)
-        final_context = "\n\n".join(context)
-
-        # Call Groq LLM
-        response = client.chat(
-            model="llama3-7b",  # Supported model
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": f"Context:\n{final_context}\n\nQuestion: {question}"}
-            ]
+        response = groq_client.completions.create(
+            model="llama3-7b",  # supported model
+            prompt=prompt,
+            max_tokens=200
         )
+        return response.choices[0].text.strip()
+    except Exception as e:
+        return f"Groq API error: {e}"
 
-        answer = response.choices[0].message.content
+# -----------------------------
+# Run retrieval and generation
+# -----------------------------
+if st.button("Generate Answer"):
+    if not question.strip():
+        st.warning("Please enter a question first.")
+    else:
+        context = retrieve_context(text_content, question)
+        answer = generate_answer_groq(context, question)
         st.subheader("Answer:")
         st.write(answer)
-
-    except Exception as e:
-        st.error(f"Error generating answer: {e}")
-
