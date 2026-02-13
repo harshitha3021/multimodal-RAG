@@ -1,67 +1,79 @@
 import streamlit as st
-import os
+from pypdf import PdfReader
+from PIL import Image
+import easyocr
+import numpy as np
 
-# Streamlit page config
 st.set_page_config(page_title="Multimodal RAG Assistant", layout="wide")
 
 st.title("📚 Multimodal RAG Assistant")
+st.markdown("Upload Text, PDF, or Image and ask questions.")
 
-# Input selection
-input_type = st.radio("Choose input type:", ["Text", "Image"])
+def extract_text_from_pdf(uploaded_file):
+    pdf = PdfReader(uploaded_file)
+    text = ""
+    for page in pdf.pages:
+        text += page.extract_text() + "\n"
+    return text
+
+def extract_text_from_image(uploaded_file):
+    image = Image.open(uploaded_file)
+    reader = easyocr.Reader(['en'])
+    result = reader.readtext(np.array(image), detail=0)
+    return " ".join(result)
+
+def simple_rag_answer(context, question):
+    sentences = context.split(".")
+    keywords = question.lower().split()
+
+    relevant_sentences = []
+    for sentence in sentences:
+        if any(keyword in sentence.lower() for keyword in keywords):
+            relevant_sentences.append(sentence.strip())
+
+    if relevant_sentences:
+        return ". ".join(relevant_sentences[:5])
+    else:
+        return "No relevant information found in the document."
+
+input_type = st.sidebar.radio(
+    "Choose Input Type",
+    ["Text", "PDF", "Image"]
+)
+
+context_text = ""
 
 if input_type == "Text":
-    user_query = st.text_area("Enter your query:")
-else:
-    user_query = None
+    context_text = st.text_area("Enter your text here")
 
-# API keys
-groq_api_key = st.text_input("Enter your Groq API Key:", type="password")
-jina_api_key = st.text_input("Enter your Jina API Key:", type="password")
+elif input_type == "PDF":
+    uploaded_pdf = st.file_uploader("Upload PDF", type=["pdf"])
+    if uploaded_pdf:
+        with st.spinner("Extracting text from PDF..."):
+            context_text = extract_text_from_pdf(uploaded_pdf)
+        st.success("PDF text extracted successfully!")
 
-# Upload files
-uploaded_text_file = st.file_uploader("Upload TXT or PDF", type=["txt", "pdf"])
-uploaded_image_file = st.file_uploader("Upload PNG or JPG", type=["png", "jpg", "jpeg"])
+elif input_type == "Image":
+    uploaded_image = st.file_uploader("Upload Image", type=["png", "jpg", "jpeg"])
+    if uploaded_image:
+        st.image(uploaded_image, caption="Uploaded Image", use_column_width=True)
+        with st.spinner("Extracting text from Image (OCR)..."):
+            context_text = extract_text_from_image(uploaded_image)
+        st.success("Text extracted from image!")
 
-# Other configuration options
-llm_model = st.selectbox("LLM Model", ["llama-3.1-8b-instant"])
-chunk_size = st.slider("Chunk Size", 300, 1000, 300)
-top_k = st.slider("Top-K Retrieval", 1, 10, 3)
-retrieval_scope = st.radio("Retrieval Scope", ["all", "text", "image"])
+st.markdown("---")
+question = st.text_input("🔎 Ask a question about the uploaded content")
 
-# Query button
-if st.button("Ask a question about your data"):
-    if not groq_api_key or not jina_api_key:
-        st.error("Please enter both API keys!")
-    elif not user_query and not uploaded_text_file and not uploaded_image_file:
-        st.error("Please enter a query or upload a file!")
+if st.button("Generate Answer"):
+    if not context_text:
+        st.warning("Please upload or enter content first.")
+    elif not question:
+        st.warning("Please enter a question.")
     else:
-        st.info("Processing your query...")
+        with st.spinner("Generating answer..."):
+            answer = simple_rag_answer(context_text, question)
+        st.subheader("📌 Answer:")
+        st.write(answer)
 
-        # Initialize clients without 'proxies'
-        groq_client = GroqClient(api_key=groq_api_key)
-        jina_client = JinaClient(api_key=jina_api_key)
-
-        # Prepare embeddings from uploaded files
-        embeddings = []
-        if uploaded_text_file:
-            embeddings += get_jina_embeddings(uploaded_text_file.read(), file_type=uploaded_text_file.type)
-        if uploaded_image_file:
-            embeddings += get_jina_embeddings(uploaded_image_file.read(), file_type=uploaded_image_file.type)
-
-        # Add query text embeddings if text input
-        if user_query:
-            embeddings += get_jina_embeddings(user_query, file_type="text")
-
-        # Query Groq
-        results = groq_client.query(
-            embeddings=embeddings,
-            model=llm_model,
-            chunk_size=chunk_size,
-            top_k=top_k,
-            scope=retrieval_scope
-        )
-
-        st.subheader("Results:")
-        for i, r in enumerate(results):
-            st.markdown(f"**Result {i+1}:** {r['text']}")
-
+st.markdown("---")
+st.caption("Simple Multimodal RAG Demo | Streamlit Cloud Compatible")
