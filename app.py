@@ -5,7 +5,7 @@ from PIL import Image
 import os
 
 st.set_page_config(page_title="Local Multimodal RAG App", layout="wide")
-st.title("Local Multimodal RAG App (No API Keys Required)")
+st.title("Local Multimodal RAG App")
 
 # -------------------- File Upload --------------------
 st.header("Upload Files")
@@ -66,3 +66,4 @@ if st.button("Generate Answer"):
         answer = generate_answer_local(context_text, question)
         st.subheader("Answer:")
         st.write(answer)
+
