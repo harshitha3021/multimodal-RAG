@@ -1,7 +1,4 @@
 import streamlit as st
-from rag.embeddings import get_jina_embeddings
-from rag.groq_client import GroqClient  # hypothetical wrapper for Groq
-from rag.jina_client import JinaClient  # hypothetical wrapper for Jina
 import os
 
 # Streamlit page config
@@ -67,3 +64,4 @@ if st.button("Ask a question about your data"):
         st.subheader("Results:")
         for i, r in enumerate(results):
             st.markdown(f"**Result {i+1}:** {r['text']}")
+
