@@ -1,10 +1,11 @@
 import streamlit as st
-from pathlib import Path
+import os
+
+st.title("Multimodal RAG App")
 
 # ------------------------------
 # STEP 1: Enter API Keys
 # ------------------------------
-st.title("Multimodal RAG App")
 groq_api_key = st.text_input("Enter Groq API Key", type="password")
 jina_api_key = st.text_input("Enter Jina API Key", type="password")
 
@@ -23,7 +24,6 @@ if not uploaded_text and not uploaded_image:
     st.info("Please upload at least one text or image file.")
     st.stop()
 
-# Read text content
 text_content = ""
 if uploaded_text:
     text_content = uploaded_text.read().decode("utf-8")
@@ -34,8 +34,9 @@ if uploaded_text:
 groq_client = None
 try:
     from groq import Client
-    groq_client = Client()               # initialize without arguments
-    groq_client.set_api_key(groq_api_key)  # set API key separately
+
+    # Groq SDK requires api_key in constructor OR environment variable
+    groq_client = Client(api_key=groq_api_key)
     st.success("Groq client initialized ✅")
 except Exception as e:
     st.error(f"Error initializing Groq client: {e}")
@@ -65,7 +66,7 @@ def generate_answer_groq(client, context, question):
     """Example Groq query function"""
     try:
         response = client.run(
-            model="llama3-8b",  # make sure this model is active in your account
+            model="llama3-8b-8192",  # Use a currently supported model
             prompt=f"Context:\n{context}\n\nQuestion: {question}",
             max_tokens=200
         )
@@ -75,10 +76,9 @@ def generate_answer_groq(client, context, question):
 
 if st.button("Get Answer") and question:
     final_context = text_content if text_content else "No text uploaded"
-    
-    # Show uploaded image info if available
+
     if uploaded_image:
-        final_context += "\n[Image uploaded]"  # for demonstration, image can be processed separately
+        final_context += "\n[Image uploaded]"  # image can be processed later
 
     answer = generate_answer_groq(groq_client, final_context, question)
     st.subheader("Answer from Groq")
