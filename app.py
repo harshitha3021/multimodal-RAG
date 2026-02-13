@@ -1,26 +1,11 @@
 import streamlit as st
-from groq import Client
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from PIL import Image
 import os
 
-st.set_page_config(page_title="Multimodal RAG App", layout="wide")
-st.title("Multimodal RAG App")
-
-# -------------------- API KEYS --------------------
-groq_api_key = st.text_input("Enter Groq API Key", type="password")
-jina_api_key = st.text_input("Enter Jina API Key", type="password")
-
-if not groq_api_key or not jina_api_key:
-    st.warning("Please enter both API keys to continue.")
-    st.stop()
-
-# -------------------- Initialize Groq Client --------------------
-try:
-    groq_client = Client(api_key=groq_api_key)
-    st.success("Groq client initialized ✅")
-except Exception as e:
-    st.error(f"Error initializing Groq client: {e}")
-    st.stop()
+st.set_page_config(page_title="Local Multimodal RAG App", layout="wide")
+st.title("Local Multimodal RAG App (No API Keys Required)")
 
 # -------------------- File Upload --------------------
 st.header("Upload Files")
@@ -35,31 +20,35 @@ if uploaded_text:
     except Exception as e:
         st.error(f"Error reading text file: {e}")
 
-# Display uploaded image
 if uploaded_image:
-    from PIL import Image
     try:
         image = Image.open(uploaded_image)
         st.image(image, caption="Uploaded Image", use_column_width=True)
+        st.info("Note: Image processing is simulated. You can add captions or embeddings later.")
     except Exception as e:
         st.error(f"Error reading image file: {e}")
 
 # -------------------- User Question --------------------
-question = st.text_input("Enter your question for the model:")
+question = st.text_input("Enter your question:")
 
-# -------------------- Dummy Embedding & Retrieval --------------------
-def generate_answer_groq(context: str, question: str) -> str:
+# -------------------- Local TF-IDF Retrieval --------------------
+def generate_answer_local(context: str, question: str) -> str:
     """
-    Example function to generate answer using Groq client.
-    Replace with actual Groq API call for LLM if available.
+    Simple TF-IDF based answer retrieval from uploaded text.
     """
     if not context or not question:
         return "Please upload files and enter a question."
+
     try:
-        # Minimal placeholder logic (replace with real API calls)
-        combined = f"Context: {context}\nQuestion: {question}"
-        # Example: pretend Groq returns last 100 chars reversed as "answer"
-        answer = combined[-100:][::-1]
+        # Split text into sentences
+        sentences = context.split("\n")
+        # TF-IDF
+        vectorizer = TfidfVectorizer()
+        tfidf_matrix = vectorizer.fit_transform(sentences + [question])
+        # Cosine similarity of question to sentences
+        similarity = cosine_similarity(tfidf_matrix[-1], tfidf_matrix[:-1])
+        best_idx = similarity.argmax()
+        answer = sentences[best_idx]
         return answer
     except Exception as e:
         return f"Error generating answer: {e}"
@@ -67,15 +56,13 @@ def generate_answer_groq(context: str, question: str) -> str:
 # -------------------- Generate Answer --------------------
 if st.button("Generate Answer"):
     if not uploaded_text and not uploaded_image:
-        st.warning("Upload at least one file first.")
+        st.warning("Upload at least a text file first.")
     elif not question:
         st.warning("Enter a question to get an answer.")
     else:
         context_text = text_content if text_content else ""
-        # For image, you could extract embeddings or captions here if needed
         if uploaded_image:
-            context_text += " [Image uploaded]"  # placeholder
-
-        answer = generate_answer_groq(context_text, question)
+            context_text += " [Image uploaded]"  # placeholder for image context
+        answer = generate_answer_local(context_text, question)
         st.subheader("Answer:")
         st.write(answer)
