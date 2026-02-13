@@ -1,11 +1,12 @@
 import streamlit as st
+from groq import Client
+from sklearn.feature_extraction.text import TfidfVectorizer
 import os
 
+st.set_page_config(page_title="Multimodal RAG App", layout="wide")
 st.title("Multimodal RAG App")
 
-# ------------------------------
-# STEP 1: Enter API Keys
-# ------------------------------
+# -------------------- API KEYS --------------------
 groq_api_key = st.text_input("Enter Groq API Key", type="password")
 jina_api_key = st.text_input("Enter Jina API Key", type="password")
 
@@ -13,73 +14,68 @@ if not groq_api_key or not jina_api_key:
     st.warning("Please enter both API keys to continue.")
     st.stop()
 
-# ------------------------------
-# STEP 2: File Upload (Text & Image)
-# ------------------------------
-st.header("Upload your files")
-uploaded_text = st.file_uploader("Upload a text file", type=["txt"])
-uploaded_image = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
-
-if not uploaded_text and not uploaded_image:
-    st.info("Please upload at least one text or image file.")
-    st.stop()
-
-text_content = ""
-if uploaded_text:
-    text_content = uploaded_text.read().decode("utf-8")
-
-# ------------------------------
-# STEP 3: Initialize Groq Client
-# ------------------------------
-groq_client = None
+# -------------------- Initialize Groq Client --------------------
 try:
-    from groq import Client
-
-    # Groq SDK requires api_key in constructor OR environment variable
     groq_client = Client(api_key=groq_api_key)
     st.success("Groq client initialized ✅")
 except Exception as e:
     st.error(f"Error initializing Groq client: {e}")
     st.stop()
 
-# ------------------------------
-# STEP 4: Initialize Jina Client (example)
-# ------------------------------
-jina_client = None
-try:
-    from jina import Client as JinaClient
-    jina_client = JinaClient(api_key=jina_api_key)
-    st.success("Jina client initialized ✅")
-except Exception as e:
-    st.warning(f"Could not initialize Jina client: {e}")
-    st.info("Jina queries will be disabled.")
+# -------------------- File Upload --------------------
+st.header("Upload Files")
+uploaded_text = st.file_uploader("Upload a text file", type=["txt"])
+uploaded_image = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
 
-# ------------------------------
-# STEP 5: Query Input
-# ------------------------------
-question = st.text_input("Ask a question about your uploaded file(s):")
-
-# ------------------------------
-# STEP 6: Generate Answer
-# ------------------------------
-def generate_answer_groq(client, context, question):
-    """Example Groq query function"""
+text_content = ""
+if uploaded_text:
     try:
-        response = client.run(
-            model="llama3-8b-8192",  # Use a currently supported model
-            prompt=f"Context:\n{context}\n\nQuestion: {question}",
-            max_tokens=200
-        )
-        return response
+        text_content = uploaded_text.read().decode("utf-8")
+        st.text_area("Text File Content", text_content, height=200)
     except Exception as e:
-        return f"Error querying Groq: {e}"
+        st.error(f"Error reading text file: {e}")
 
-if st.button("Get Answer") and question:
-    final_context = text_content if text_content else "No text uploaded"
+# Display uploaded image
+if uploaded_image:
+    from PIL import Image
+    try:
+        image = Image.open(uploaded_image)
+        st.image(image, caption="Uploaded Image", use_column_width=True)
+    except Exception as e:
+        st.error(f"Error reading image file: {e}")
 
-    if uploaded_image:
-        final_context += "\n[Image uploaded]"  # image can be processed later
+# -------------------- User Question --------------------
+question = st.text_input("Enter your question for the model:")
 
-    answer = generate_answer_groq(groq_client, final_context, question)
-    st.subheader("Answer from Groq")
-    st.write(answer)
+# -------------------- Dummy Embedding & Retrieval --------------------
+def generate_answer_groq(context: str, question: str) -> str:
+    """
+    Example function to generate answer using Groq client.
+    Replace with actual Groq API call for LLM if available.
+    """
+    if not context or not question:
+        return "Please upload files and enter a question."
+    try:
+        # Minimal placeholder logic (replace with real API calls)
+        combined = f"Context: {context}\nQuestion: {question}"
+        # Example: pretend Groq returns last 100 chars reversed as "answer"
+        answer = combined[-100:][::-1]
+        return answer
+    except Exception as e:
+        return f"Error generating answer: {e}"
+
+# -------------------- Generate Answer --------------------
+if st.button("Generate Answer"):
+    if not uploaded_text and not uploaded_image:
+        st.warning("Upload at least one file first.")
+    elif not question:
+        st.warning("Enter a question to get an answer.")
+    else:
+        context_text = text_content if text_content else ""
+        # For image, you could extract embeddings or captions here if needed
+        if uploaded_image:
+            context_text += " [Image uploaded]"  # placeholder
+
+        answer = generate_answer_groq(context_text, question)
+        st.subheader("Answer:")
+        st.write(answer)
